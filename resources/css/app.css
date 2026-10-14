@@ -1,0 +1,246 @@
+@import 'tailwindcss';
+
+@source '../../storage/framework/views/*.php';
+
+@theme {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    --color-ink-950: #07090d;
+    --color-ink-900: #0b0f15;
+    --color-ink-850: #0f141c;
+    --color-ink-800: #141a24;
+    --color-ink-700: #1d2531;
+
+    --animate-fade-up: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    --animate-slide-in: slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    --animate-shimmer: shimmer 1.6s linear infinite;
+
+    @keyframes fade-up {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+
+    @keyframes slide-in {
+        from {
+            opacity: 0;
+            transform: translateY(-6px);
+            background-color: rgb(52 211 153 / 0.08);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+
+    @keyframes shimmer {
+        from {
+            background-position: -200% 0;
+        }
+        to {
+            background-position: 200% 0;
+        }
+    }
+}
+
+@layer base {
+    body {
+        background:
+            radial-gradient(1200px 500px at 15% -10%, rgb(16 185 129 / 0.07), transparent 60%),
+            radial-gradient(900px 400px at 100% 0%, rgb(56 189 248 / 0.05), transparent 60%),
+            var(--color-ink-950);
+        background-attachment: fixed;
+    }
+
+    ::selection {
+        background: rgb(52 211 153 / 0.3);
+    }
+}
+
+@utility card {
+    border-radius: 1.25rem;
+    border: 1px solid rgb(255 255 255 / 0.06);
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.025), transparent 40%), var(--color-ink-900);
+    box-shadow:
+        0 1px 0 rgb(255 255 255 / 0.03) inset,
+        0 20px 40px -24px rgb(0 0 0 / 0.7);
+}
+
+@utility skeleton {
+    border-radius: 0.5rem;
+    background: linear-gradient(90deg, rgb(255 255 255 / 0.04) 25%, rgb(255 255 255 / 0.09) 50%, rgb(255 255 255 / 0.04) 75%);
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
+}
+
+@utility scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.1) transparent;
+}
+
+/* ---- Leaflet map ------------------------------------------------------ */
+
+/* OpenStreetMap tiles, recoloured to sit inside the dark UI. */
+.fleet-map .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(185deg) brightness(0.92) contrast(0.88) saturate(0.55);
+}
+
+.fleet-map.leaflet-container {
+    background: var(--color-ink-850);
+    font-family: var(--font-sans);
+}
+
+.fleet-map .leaflet-bar {
+    border: 1px solid rgb(255 255 255 / 0.08);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.6);
+}
+
+.fleet-map .leaflet-bar a {
+    background: rgb(15 20 28 / 0.9);
+    color: #cbd5e1;
+    border-bottom-color: rgb(255 255 255 / 0.06);
+    backdrop-filter: blur(8px);
+    transition: background-color 150ms, color 150ms;
+}
+
+.fleet-map .leaflet-bar a:hover {
+    background: var(--color-ink-700);
+    color: #fff;
+}
+
+.fleet-map .leaflet-control-attribution {
+    background: rgb(7 9 13 / 0.6);
+    color: #64748b;
+    border-top-left-radius: 0.5rem;
+}
+
+.fleet-map .leaflet-control-attribution a {
+    color: #94a3b8;
+}
+
+/* ---- Vehicle marker --------------------------------------------------- */
+
+.vehicle-marker {
+    --marker-color: #34d399;
+    position: relative;
+    width: 36px;
+    height: 36px;
+    animation: marker-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.vehicle-marker[data-status='idle'] {
+    --marker-color: #94a3b8;
+}
+
+.vehicle-marker[data-status='invalid'],
+.vehicle-marker[data-status='offline'] {
+    --marker-color: #f43f5e;
+}
+
+.vehicle-marker__halo {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: var(--marker-color);
+    opacity: 0.18;
+    transition: background-color 0.5s;
+}
+
+.vehicle-marker[data-status='moving'] .vehicle-marker__halo {
+    animation: marker-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.vehicle-marker__body {
+    position: absolute;
+    inset: 7px;
+    display: grid;
+    place-items: center;
+    border-radius: 9999px;
+    background: var(--marker-color);
+    border: 2px solid rgb(255 255 255 / 0.92);
+    box-shadow: 0 6px 16px rgb(0 0 0 / 0.5);
+    transition:
+        background-color 0.5s,
+        box-shadow 0.3s,
+        transform 0.3s;
+}
+
+.vehicle-marker[data-selected='true'] .vehicle-marker__body {
+    transform: scale(1.15);
+    box-shadow:
+        0 0 0 5px rgb(255 255 255 / 0.15),
+        0 6px 16px rgb(0 0 0 / 0.5);
+}
+
+.vehicle-marker[data-status='offline'] {
+    opacity: 0.65;
+}
+
+.vehicle-marker__arrow {
+    width: 13px;
+    height: 13px;
+    color: #06080b;
+    transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes marker-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.2) translateY(-12px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes marker-ping {
+    0% {
+        transform: scale(0.7);
+        opacity: 0.45;
+    }
+    80%,
+    100% {
+        transform: scale(1.7);
+        opacity: 0;
+    }
+}
+
+/* ---- Popup ------------------------------------------------------------ */
+
+.vehicle-popup .leaflet-popup-content-wrapper {
+    background: rgb(15 20 28 / 0.96);
+    color: #e2e8f0;
+    border: 1px solid rgb(255 255 255 / 0.08);
+    border-radius: 1rem;
+    box-shadow: 0 24px 48px -12px rgb(0 0 0 / 0.7);
+    backdrop-filter: blur(10px);
+}
+
+.vehicle-popup .leaflet-popup-content {
+    margin: 0.85rem 1rem;
+    font-family: var(--font-sans);
+    line-height: 1.4;
+}
+
+.vehicle-popup .leaflet-popup-tip {
+    background: rgb(15 20 28 / 0.96);
+    border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .vehicle-marker,
+    .vehicle-marker__halo,
+    .vehicle-marker__arrow {
+        animation: none !important;
+        transition: none !important;
+    }
+}
