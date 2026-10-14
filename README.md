@@ -86,6 +86,7 @@ Installing MySQL and Redis on Windows, macOS and Linux, plus troubleshooting, is
 | [docs/running-without-redis.md](docs/running-without-redis.md) | What Redis does here, alternatives (file, database, sync, SQLite) and their trade-offs |
 | [docs/architecture.md](docs/architecture.md) | Data flow, database design, queue job, polling cursor, caching, concurrency, frontend, scaling |
 | [docs/api.md](docs/api.md) | Every endpoint with request/response examples, the payload field mapping, validation and rate limits |
+| [docs/prompts.md](docs/prompts.md) | The prompts used to build the project with an AI assistant |
 
 ## Project structure
 
