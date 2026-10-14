@@ -6,6 +6,7 @@ use App\Jobs\StoreGpsEventJob;
 use App\Models\GpsEvent;
 use App\Models\Vehicle;
 use App\Services\GpsPayloadNormalizer;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -53,6 +54,34 @@ class GpsIngestTest extends TestCase
         $this->postJson('/api/gps/ingest', ['messages' => [$this->payload(['position.longitude' => 500])]])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['messages.0.position.longitude']);
+    }
+
+    public function test_nested_payload_is_flattened_and_queued(): void
+    {
+        Queue::fake();
+
+        $this->postJson('/api/gps/ingest', [
+            'ident' => '111115555599999',
+            'timestamp' => 1678346071,
+            'position' => ['latitude' => 43.955218, 'longitude' => 37.661918, 'valid' => true],
+        ])->assertStatus(202);
+
+        Queue::assertPushed(StoreGpsEventJob::class, fn ($job) => $job->messages[0]['position']['latitude'] === 43.955218
+            && $job->messages[0]['raw']['position.longitude'] === 37.661918);
+    }
+
+    public function test_timestamp_too_far_in_the_future_returns_422(): void
+    {
+        $this->postJson('/api/gps/ingest', $this->payload(['timestamp' => now()->addHour()->timestamp]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['messages.0.timestamp' => 'cannot be more than 5 minutes in the future']);
+    }
+
+    public function test_out_of_range_device_fields_return_422(): void
+    {
+        $this->postJson('/api/gps/ingest', $this->payload(['channel.id' => -5, 'protocol.id' => 99999999999]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['messages.0.channel.id', 'messages.0.protocol.id']);
     }
 
     public function test_job_stores_event_position_and_cache(): void
@@ -108,6 +137,23 @@ class GpsIngestTest extends TestCase
 
         $this->assertSame(44.0, Vehicle::sole()->currentPosition->latitude);
         $this->assertDatabaseCount('gps_events', 2);
+    }
+
+    public function test_one_failing_vehicle_does_not_block_the_rest_of_the_batch(): void
+    {
+        $normalizer = new GpsPayloadNormalizer;
+        $broken = $normalizer->normalize($this->payload(['ident' => 'BROKEN']));
+        $broken['telemetry']['unknown_column'] = 1; // makes this vehicle's insert fail
+
+        try {
+            StoreGpsEventJob::dispatchSync([$broken, $normalizer->normalize($this->payload())]);
+            $this->fail('The job should fail so the queue retries it.');
+        } catch (QueryException) {
+            // expected
+        }
+
+        $this->assertDatabaseCount('gps_events', 1);
+        $this->assertNotNull(Vehicle::firstWhere('ident', '111115555599999')->currentPosition);
     }
 
     private function runJob(array $payloads): void

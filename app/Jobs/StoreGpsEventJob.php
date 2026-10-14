@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Persists one ingest request: one or many messages, possibly for several vehicles.
@@ -30,14 +31,28 @@ class StoreGpsEventJob implements ShouldQueue
     public function handle(VehiclePositionCache $cache): void
     {
         $byVehicle = collect($this->messages)->groupBy('ident');
+        $failure = null;
 
         foreach ($byVehicle as $ident => $messages) {
-            $vehicle = $this->storeVehicleMessages((string) $ident, $messages->sortBy('device_timestamp')->values());
+            try {
+                $vehicle = $this->storeVehicleMessages((string) $ident, $messages->sortBy('device_timestamp')->values());
+            } catch (Throwable $exception) {
+                // One failing vehicle must not drop the other vehicles in the batch.
+                $failure ??= $exception;
+
+                continue;
+            }
 
             // Written after the commit, so Redis never holds a position MySQL rolled back.
             if ($vehicle) {
                 $cache->put($vehicle);
             }
+        }
+
+        // Fail the job so the queue retries it. Replaying is safe: stored messages are
+        // skipped as duplicates and older messages never overwrite a newer position.
+        if ($failure) {
+            throw $failure;
         }
     }
 

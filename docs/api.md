@@ -78,7 +78,7 @@ Keys not listed here (`gsm.cellid`, `peer`, `event.priority.enum`, …) are acce
 | Payload key | Required | Rule | Stored as |
 | --- | --- | --- | --- |
 | `ident` | ✅ | string, ≤ 64 chars | `vehicles.ident` (vehicle lookup key) |
-| `timestamp` | ✅ | number ≥ 0 (unix seconds, device time) | `device_timestamp`, `message_timestamp` |
+| `timestamp` | ✅ | number ≥ 0, at most 5 min in the future (unix seconds, device time) | `device_timestamp`, `message_timestamp` |
 | `position.latitude` | ✅ | −90 … 90 | `latitude` |
 | `position.longitude` | ✅ | −180 … 180 | `longitude` |
 | `position.valid` | | boolean, default `true` | `gnss_valid` |
@@ -96,13 +96,17 @@ Keys not listed here (`gsm.cellid`, `peer`, `event.priority.enum`, …) are acce
 | `server.timestamp` | | number ≥ 0 (unix seconds, fractional) | `server_timestamp` |
 | `device.id` | | integer ≥ 0 | `vehicles.device_id` |
 | `device.name` | | string ≤ 255 | `vehicles.device_name` |
-| `device.type.id`, `channel.id`, `protocol.id` | | integer | `vehicles.device_type_id`, `channel_id`, `protocol_id` |
+| `device.type.id`, `channel.id`, `protocol.id` | | integer ≥ 0 | `vehicles.device_type_id`, `channel_id`, `protocol_id` |
+
+Nested objects are accepted too: `{"position": {"latitude": 43.9}}` is flattened to `position.latitude`.
 
 ### Processing rules
 
 - **`position.valid: false`.** The event is stored and the telemetry (battery, ignition, …) is updated, but the vehicle **keeps its last known coordinates** on the map, and its status becomes *GPS Invalid*.
 - **Duplicates.** A message with the same `ident` and `timestamp` as a stored one is ignored.
 - **Out of order.** A message older than the vehicle's current position is stored in history but doesn't move the vehicle.
+- **Future timestamps.** Rejected with `422` when more than 5 minutes ahead. A device with a wrong clock would otherwise block all its later, real messages from moving the vehicle.
+- **Failures.** If storing one vehicle fails, the other vehicles in the batch are still stored. The job then fails and is retried, which is safe because already-stored messages are skipped as duplicates.
 - **New ident.** The vehicle is created automatically on its first message.
 
 ### Validation errors: `422`

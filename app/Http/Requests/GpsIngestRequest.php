@@ -14,13 +14,22 @@ class GpsIngestRequest extends FormRequest
     public const MAX_MESSAGES = 500;
 
     /**
-     * The raw, dot-keyed payloads exactly as the tracker sent them.
+     * Device clocks drift a little. A timestamp further ahead than this is rejected,
+     * because it would block every real (older) message from updating the vehicle.
+     */
+    public const MAX_FUTURE_SECONDS = 300;
+
+    private const UNSIGNED_INT_MAX = 4294967295;
+
+    /**
+     * The payloads in the tracker's flat, dot-keyed format. A nested object such as
+     * {"position": {"latitude": 43.9}} is flattened to "position.latitude" as well.
      *
      * @return list<array>
      */
     public function payloads(): array
     {
-        return $this->has('messages') ? array_values((array) $this->input('messages')) : [$this->all()];
+        return array_map(Arr::dot(...), array_values($this->rawMessages()));
     }
 
     /**
@@ -29,12 +38,12 @@ class GpsIngestRequest extends FormRequest
      */
     public function validationData(): array
     {
-        $payloads = $this->has('messages') ? $this->input('messages') : [$this->all()];
+        $messages = $this->rawMessages();
 
         return [
-            'messages' => is_array($payloads)
-                ? array_map(fn ($payload) => is_array($payload) ? Arr::undot($payload) : $payload, $payloads)
-                : $payloads,
+            'messages' => is_array($messages)
+                ? array_map(fn ($payload) => is_array($payload) ? Arr::undot(Arr::dot($payload)) : $payload, $messages)
+                : $messages,
         ];
     }
 
@@ -44,7 +53,7 @@ class GpsIngestRequest extends FormRequest
             'messages' => ['required', 'array', 'min:1', 'max:'.self::MAX_MESSAGES],
             'messages.*' => ['required', 'array'],
             'messages.*.ident' => ['required', 'string', 'max:64'],
-            'messages.*.timestamp' => ['required', 'numeric', 'min:0'],
+            'messages.*.timestamp' => ['required', 'numeric', 'min:0', 'max:'.(now()->timestamp + self::MAX_FUTURE_SECONDS)],
             'messages.*.position.latitude' => ['required', 'numeric', 'between:-90,90'],
             'messages.*.position.longitude' => ['required', 'numeric', 'between:-180,180'],
             'messages.*.position.valid' => ['nullable', 'boolean'],
@@ -59,9 +68,19 @@ class GpsIngestRequest extends FormRequest
             'messages.*.external.powersource.voltage' => ['nullable', 'numeric', 'between:0,999'],
             'messages.*.gsm.signal.level' => ['nullable', 'integer', 'between:0,65535'],
             'messages.*.vehicle.mileage' => ['nullable', 'numeric', 'between:0,999999999'],
-            'messages.*.server.timestamp' => ['nullable', 'numeric', 'min:0'],
+            'messages.*.server.timestamp' => ['nullable', 'numeric', 'between:0,9999999999'],
             'messages.*.device.id' => ['nullable', 'integer', 'min:0'],
             'messages.*.device.name' => ['nullable', 'string', 'max:255'],
+            'messages.*.device.type.id' => ['nullable', 'integer', 'between:0,'.self::UNSIGNED_INT_MAX],
+            'messages.*.channel.id' => ['nullable', 'integer', 'between:0,'.self::UNSIGNED_INT_MAX],
+            'messages.*.protocol.id' => ['nullable', 'integer', 'between:0,'.self::UNSIGNED_INT_MAX],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'messages.*.timestamp.max' => 'The :attribute field cannot be more than '.(self::MAX_FUTURE_SECONDS / 60).' minutes in the future.',
         ];
     }
 
@@ -74,5 +93,10 @@ class GpsIngestRequest extends FormRequest
             ->keys()
             ->mapWithKeys(fn (string $rule) => [$rule => Str::after($rule, 'messages.*.')])
             ->all();
+    }
+
+    private function rawMessages(): mixed
+    {
+        return $this->has('messages') ? $this->input('messages') : [$this->all()];
     }
 }
